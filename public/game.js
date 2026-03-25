@@ -4,21 +4,23 @@ const socket = io();
 // ─── Canvas ───────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('gameCanvas');
 const ctx    = canvas.getContext('2d');
-const W = 800, H = 480;   // logical size (never changes)
+const W = 800, H = 480;          // logical game resolution — never changes
 canvas.width = W; canvas.height = H;
 
 const FIELD  = { x:40, y:40, w:W-80, h:H-80, goalW:14, goalH:110 };
 const GOAL_Y = (H - FIELD.goalH) / 2;
 
-// ─── Game state ───────────────────────────────────────────────────────────────
+// ─── State ────────────────────────────────────────────────────────────────────
 let myCode     = null;
 let myPlayerId = null;
 let isHost     = false;
 let gameState  = null;
 let keys       = {};
-let dpadKeys   = {};
 let inputLoop  = null;
-let isMobile   = false;
+let isMobile   = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+// Joystick state
+const joy = { active: false, touchId: null, cx: 0, cy: 0, dx: 0, dy: 0 };
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 const lobbyEl         = document.getElementById('lobby');
@@ -36,38 +38,75 @@ const fulltimeOverlay = document.getElementById('fulltime-overlay');
 const fulltimeResult  = document.getElementById('fulltime-result');
 const disconnectOv    = document.getElementById('disconnect-overlay');
 const yourHint        = document.getElementById('your-player-hint');
-const dpad            = document.getElementById('dpad');
+const joystickZone    = document.getElementById('joystick-zone');
+const joystickKnob    = document.getElementById('joystick-knob');
+const rotatePrompt    = document.getElementById('rotate-prompt');
 const canvasWrapper   = document.getElementById('canvas-wrapper');
 
-// ─── Detect touch ─────────────────────────────────────────────────────────────
-isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-
-// ─── Canvas scaling ───────────────────────────────────────────────────────────
+// ─── Canvas sizing ────────────────────────────────────────────────────────────
+// On mobile: fill the entire screen (canvas-wrapper = 100vw × 100vh, letterboxed)
+// On desktop: fit inside viewport with small padding
 function resizeCanvas() {
-  const gameScreen = document.getElementById('game-screen');
-  if (gameScreen.classList.contains('hidden')) return;
+  if (gameEl.classList.contains('hidden')) return;
 
-  // Available height: viewport minus scoreboard (≈44px) minus dpad (mobile ≈70px) minus margins
-  const scoreboardH = document.getElementById('scoreboard').offsetHeight || 44;
-  const dpadH       = (isMobile && !dpad.classList.contains('hidden')) ? (dpad.offsetHeight + 10) || 74 : 32;
-  const available_h = window.innerHeight - scoreboardH - dpadH - 24;
-  const available_w = window.innerWidth  - 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
 
-  const scaleW = available_w / W;
-  const scaleH = available_h / H;
-  const scale  = Math.min(scaleW, scaleH, 1); // never upscale beyond native
+  const scaleX = vw / W;
+  const scaleY = vh / H;
+  const scale  = Math.min(scaleX, scaleY);   // allow up-scaling on mobile
 
-  const displayW = Math.floor(W * scale);
-  const displayH = Math.floor(H * scale);
+  const dw = Math.round(W * scale);
+  const dh = Math.round(H * scale);
 
-  canvasWrapper.style.width  = displayW + 'px';
-  canvasWrapper.style.height = displayH + 'px';
-  canvas.style.width         = displayW + 'px';
-  canvas.style.height        = displayH + 'px';
+  canvasWrapper.style.width  = dw + 'px';
+  canvasWrapper.style.height = dh + 'px';
+  canvas.style.width  = dw + 'px';
+  canvas.style.height = dh + 'px';
 }
 
-window.addEventListener('resize',            resizeCanvas);
+window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 300));
+
+// ─── Portrait detection (only relevant during game) ───────────────────────────
+function checkOrientation() {
+  if (gameEl.classList.contains('hidden')) {
+    rotatePrompt.classList.add('hidden');
+    return;
+  }
+  const isPortrait = window.innerHeight > window.innerWidth;
+  if (isMobile && isPortrait) {
+    rotatePrompt.classList.remove('hidden');
+  } else {
+    rotatePrompt.classList.add('hidden');
+    resizeCanvas();
+  }
+}
+
+window.addEventListener('resize',            checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 300));
+
+// ─── Copy code ────────────────────────────────────────────────────────────────
+function copyCode() {
+  if (!myCode) return;
+  const btn   = document.getElementById('copy-btn');
+  const label = document.getElementById('copy-label');
+  navigator.clipboard.writeText(myCode).then(() => {
+    btn.classList.add('copied');
+    label.textContent = '✓ Copied!';
+    setTimeout(() => { btn.classList.remove('copied'); label.textContent = 'Copy Code'; }, 2000);
+  }).catch(() => {
+    // fallback for older mobile browsers
+    const ta = document.createElement('textarea');
+    ta.value = myCode;
+    document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.classList.add('copied');
+    label.textContent = '✓ Copied!';
+    setTimeout(() => { btn.classList.remove('copied'); label.textContent = 'Copy Code'; }, 2000);
+  });
+}
 
 // ─── Lobby tabs ───────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
@@ -82,8 +121,8 @@ document.querySelectorAll('.tab').forEach(btn => {
 
 // ─── Mode select ──────────────────────────────────────────────────────────────
 const modeDescs = {
-  '1v1': '1 player each side — 2 players total',
-  '2v2': '2 per side — start with 2, 3, or 4 players',
+  '1v1': 'One player each side — 2 players total',
+  '2v2': '2 per side — host can start with 2, 3, or 4 players',
 };
 let selectedMode = '1v1';
 
@@ -98,56 +137,93 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
 
 // ─── Create / Join ────────────────────────────────────────────────────────────
 document.getElementById('create-btn').addEventListener('click', () => {
-  const nick = document.getElementById('nickname').value.trim() || 'P1';
+  const nick = document.getElementById('nickname').value.trim() || 'Player';
   socket.emit('createRoom', { mode: selectedMode, nickname: nick });
 });
 
-document.getElementById('join-btn').addEventListener('click', doJoin);
-document.getElementById('room-code-input').addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
-
 function doJoin() {
   const code = document.getElementById('room-code-input').value.trim().toUpperCase();
-  const nick = document.getElementById('nickname').value.trim() || 'P?';
+  const nick = document.getElementById('nickname').value.trim() || 'Player';
   if (code.length !== 4) { lobbyError.textContent = 'Enter a 4-letter room code'; return; }
   socket.emit('joinRoom', { code, nickname: nick });
 }
 
-startBtn.addEventListener('click', () => { socket.emit('startGame', { code: myCode }); });
+document.getElementById('join-btn').addEventListener('click', doJoin);
+document.getElementById('room-code-input').addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
+startBtn.addEventListener('click', () => socket.emit('startGame', { code: myCode }));
 
 // ─── Keyboard input ───────────────────────────────────────────────────────────
-document.addEventListener('keydown', e => { keys[e.key] = true;  if (gameEl && !gameEl.classList.contains('hidden')) e.preventDefault(); });
-document.addEventListener('keyup',   e => { keys[e.key] = false; });
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (!gameEl.classList.contains('hidden')) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
 
-// ─── D-pad touch input ────────────────────────────────────────────────────────
-document.querySelectorAll('.dpad-btn').forEach(btn => {
-  const dir = btn.dataset.dir;
+// ─── Joystick ─────────────────────────────────────────────────────────────────
+const JOY_RADIUS   = 65;   // base radius (px on screen — scaled)
+const DEAD_ZONE    = 0.15; // fraction of radius before direction registers
 
-  const press = (e) => {
+joystickZone.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t  = e.changedTouches[0];
+  const rc = joystickZone.getBoundingClientRect();
+  joy.active  = true;
+  joy.touchId = t.identifier;
+  joy.cx      = rc.left + rc.width  / 2;
+  joy.cy      = rc.top  + rc.height / 2;
+  updateJoy(t.clientX, t.clientY);
+}, { passive: false });
+
+joystickZone.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === joy.touchId) { updateJoy(t.clientX, t.clientY); break; }
+  }
+}, { passive: false });
+
+['touchend', 'touchcancel'].forEach(ev => {
+  joystickZone.addEventListener(ev, e => {
     e.preventDefault();
-    dpadKeys[dir] = true;
-    btn.classList.add('pressed');
-  };
-  const release = (e) => {
-    e.preventDefault();
-    dpadKeys[dir] = false;
-    btn.classList.remove('pressed');
-  };
-
-  btn.addEventListener('touchstart',  press,   { passive: false });
-  btn.addEventListener('touchend',    release, { passive: false });
-  btn.addEventListener('touchcancel', release, { passive: false });
-  // Mouse fallback for testing on desktop
-  btn.addEventListener('mousedown',   press);
-  btn.addEventListener('mouseup',     release);
-  btn.addEventListener('mouseleave',  release);
+    for (const t of e.changedTouches) {
+      if (t.identifier === joy.touchId) { resetJoy(); break; }
+    }
+  }, { passive: false });
 });
 
+function updateJoy(cx, cy) {
+  let dx = cx - joy.cx;
+  let dy = cy - joy.cy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const maxR = JOY_RADIUS;
+  if (dist > maxR) { dx = dx/dist*maxR; dy = dy/dist*maxR; }
+  joy.dx = dx / maxR;
+  joy.dy = dy / maxR;
+  // Move knob visually
+  joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+
+function resetJoy() {
+  joy.active = false;
+  joy.dx = 0; joy.dy = 0;
+  joystickKnob.style.transform = 'translate(-50%, -50%)';
+}
+
 function getActiveKeys() {
+  const kUp    = keys['w'] || keys['ArrowUp'];
+  const kDown  = keys['s'] || keys['ArrowDown'];
+  const kLeft  = keys['a'] || keys['ArrowLeft'];
+  const kRight = keys['d'] || keys['ArrowRight'];
+
+  const jUp    = joy.dy < -DEAD_ZONE;
+  const jDown  = joy.dy >  DEAD_ZONE;
+  const jLeft  = joy.dx < -DEAD_ZONE;
+  const jRight = joy.dx >  DEAD_ZONE;
+
   return {
-    up:    !!(keys['w'] || keys['ArrowUp']    || dpadKeys['up']),
-    down:  !!(keys['s'] || keys['ArrowDown']  || dpadKeys['down']),
-    left:  !!(keys['a'] || keys['ArrowLeft']  || dpadKeys['left']),
-    right: !!(keys['d'] || keys['ArrowRight'] || dpadKeys['right']),
+    up:    !!(kUp    || jUp),
+    down:  !!(kDown  || jDown),
+    left:  !!(kLeft  || jLeft),
+    right: !!(kRight || jRight),
   };
 }
 
@@ -162,8 +238,7 @@ function startInputLoop() {
 function stopInputLoop() {
   clearInterval(inputLoop);
   inputLoop = null;
-  dpadKeys = {};
-  document.querySelectorAll('.dpad-btn').forEach(b => b.classList.remove('pressed'));
+  resetJoy();
 }
 
 // ─── Socket events ────────────────────────────────────────────────────────────
@@ -205,7 +280,7 @@ socket.on('countdown', n => {
   countdownEl.classList.remove('hidden');
   countdownEl.textContent = n;
   countdownEl.style.animation = 'none';
-  countdownEl.offsetHeight;   // reflow
+  countdownEl.offsetHeight;
   countdownEl.style.animation = '';
 });
 
@@ -231,7 +306,7 @@ socket.on('goal', ({ scorer }) => {
   setTimeout(() => { goalFlash.style.opacity = '0'; }, 1200);
 });
 
-socket.on('reset',    state  => { gameState = state; });
+socket.on('reset',    state => { gameState = state; });
 
 socket.on('gameover', ({ score }) => {
   stopInputLoop();
@@ -246,11 +321,14 @@ function showWaiting(state) {
   lobbyEl.classList.add('hidden');
   waitingEl.classList.remove('hidden');
   gameEl.classList.add('hidden');
+  rotatePrompt.classList.add('hidden');
+
   roomCodeDisplay.textContent = myCode;
   updateSlotsUI(state);
+
   if (isHost) {
     startBtn.classList.remove('hidden');
-    waitingMsg.textContent = 'Start when everyone has joined';
+    waitingMsg.textContent = 'Start whenever everyone has joined';
   } else {
     startBtn.classList.add('hidden');
     waitingMsg.textContent = 'Waiting for host to start…';
@@ -258,18 +336,18 @@ function showWaiting(state) {
 }
 
 function updateSlotsUI(state) {
-  const players     = Object.values(state.players);
-  const leftPlayers = players.filter(p => p.team === 'left') .sort((a,b) => a.id.localeCompare(b.id));
-  const rightPlayers= players.filter(p => p.team === 'right').sort((a,b) => a.id.localeCompare(b.id));
+  const players      = Object.values(state.players);
+  const leftPlayers  = players.filter(p => p.team === 'left') .sort((a,b) => a.id.localeCompare(b.id));
+  const rightPlayers = players.filter(p => p.team === 'right').sort((a,b) => a.id.localeCompare(b.id));
 
-  const renderTeam = (list, label) => `
+  const renderTeam = (list, lbl) => `
     <div class="slots-team">
-      <div class="slots-team-label">${label}</div>
+      <div class="slots-team-label">${lbl}</div>
       ${list.map(p => {
         const isYou = p.id === myPlayerId;
-        return `<div class="slot-card ${p.connected ? 'filled':''} ${isYou ? 'you':''}" style="--dot-color:${p.color}">
+        return `<div class="slot-card ${p.connected?'filled':''} ${isYou?'you':''}" style="--dot-color:${p.color}">
           <span class="slot-dot"></span>
-          <span>${p.connected ? p.label + (isYou ? ' (You)' : '') : 'Empty'}</span>
+          <span>${p.connected ? p.label+(isYou?' (You)':'') : 'Empty slot'}</span>
         </div>`;
       }).join('')}
     </div>`;
@@ -289,11 +367,11 @@ function showGame(state) {
   fulltimeOverlay.classList.remove('show');
   disconnectOv.classList.add('hidden');
 
-  // Show / hide D-pad based on touch
+  // Show joystick only on touch devices
   if (isMobile) {
-    dpad.classList.remove('hidden');
+    joystickZone.classList.remove('hidden');
   } else {
-    dpad.classList.add('hidden');
+    joystickZone.classList.add('hidden');
   }
 
   const me = state.players[myPlayerId];
@@ -303,19 +381,19 @@ function showGame(state) {
   }
 
   timerDisplay.textContent = formatTime(state.timeLeft);
-  setTimeout(resizeCanvas, 50);
+  setTimeout(() => { resizeCanvas(); checkOrientation(); }, 60);
 }
 
 function backToLobby() {
   stopInputLoop();
-  myCode = null; myPlayerId = null; isHost = false; gameState = null;
+  myCode = null; myPlayerId = null; isHost = false; gameState = null; keys = {};
+  rotatePrompt.classList.add('hidden');
   lobbyEl.classList.remove('hidden');
   waitingEl.classList.add('hidden');
   gameEl.classList.add('hidden');
   fulltimeOverlay.classList.remove('show');
   disconnectOv.classList.add('hidden');
   lobbyError.textContent = '';
-  keys = {}; dpadKeys = {};
 }
 
 function formatTime(s) {
@@ -335,48 +413,66 @@ function renderLoop() {
 
 // ─── Draw: Field ──────────────────────────────────────────────────────────────
 function drawField() {
-  ctx.fillStyle = '#1e1e1e';
+  ctx.fillStyle = '#1a1a1a';
   ctx.fillRect(0, 0, W, H);
 
+  // Grass
   const g = ctx.createLinearGradient(FIELD.x, FIELD.y, FIELD.x, FIELD.y+FIELD.h);
-  g.addColorStop(0,'#2d6b2a'); g.addColorStop(0.5,'#317a2e'); g.addColorStop(1,'#2d6b2a');
+  g.addColorStop(0, '#2a6228'); g.addColorStop(0.5, '#2e7a2b'); g.addColorStop(1, '#2a6228');
   ctx.fillStyle = g;
   ctx.fillRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
 
+  // Mowed stripes
   const sw = FIELD.w / 14;
-  for (let i=0;i<14;i++) {
-    if (i%2===0) { ctx.fillStyle='rgba(0,0,0,0.07)'; ctx.fillRect(FIELD.x+i*sw,FIELD.y,sw,FIELD.h); }
+  for (let i = 0; i < 14; i++) {
+    if (i % 2 === 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      ctx.fillRect(FIELD.x + i*sw, FIELD.y, sw, FIELD.h);
+    }
   }
 
-  ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=2.5;
-  ctx.strokeRect(FIELD.x,FIELD.y,FIELD.w,FIELD.h);
+  // Boundary line
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2.5;
+  ctx.strokeRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
 
-  ctx.setLineDash([8,6]);
-  ctx.beginPath(); ctx.moveTo(W/2,FIELD.y); ctx.lineTo(W/2,FIELD.y+FIELD.h); ctx.stroke();
+  // Centre line
+  ctx.setLineDash([10, 7]);
+  ctx.beginPath(); ctx.moveTo(W/2, FIELD.y); ctx.lineTo(W/2, FIELD.y+FIELD.h); ctx.stroke();
   ctx.setLineDash([]);
 
-  ctx.beginPath(); ctx.arc(W/2,H/2,55,0,Math.PI*2); ctx.stroke();
-  ctx.fillStyle='rgba(255,255,255,0.85)';
-  ctx.beginPath(); ctx.arc(W/2,H/2,3,0,Math.PI*2); ctx.fill();
+  // Centre circle
+  ctx.beginPath(); ctx.arc(W/2, H/2, 58, 0, Math.PI*2); ctx.stroke();
 
-  const paW=90,paH=180;
-  ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=2.5;
-  ctx.strokeRect(FIELD.x,(H-paH)/2,paW,paH);
-  ctx.strokeRect(FIELD.x+FIELD.w-paW,(H-paH)/2,paW,paH);
+  // Centre dot
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath(); ctx.arc(W/2, H/2, 4, 0, Math.PI*2); ctx.fill();
 
-  ctx.fillStyle='rgba(255,255,255,0.12)';
-  ctx.fillRect(FIELD.x-FIELD.goalW,GOAL_Y,FIELD.goalW,FIELD.goalH);
-  ctx.fillRect(FIELD.x+FIELD.w,GOAL_Y,FIELD.goalW,FIELD.goalH);
-  ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=2;
-  ctx.strokeRect(FIELD.x-FIELD.goalW,GOAL_Y,FIELD.goalW,FIELD.goalH);
-  ctx.strokeRect(FIELD.x+FIELD.w,GOAL_Y,FIELD.goalW,FIELD.goalH);
+  // Penalty areas
+  const paW = 95, paH = 190;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2.5;
+  ctx.strokeRect(FIELD.x, (H-paH)/2, paW, paH);
+  ctx.strokeRect(FIELD.x+FIELD.w-paW, (H-paH)/2, paW, paH);
 
-  const cAng=Math.PI/2;
-  [[FIELD.x,FIELD.y,0],[FIELD.x+FIELD.w,FIELD.y,Math.PI/2],
-   [FIELD.x+FIELD.w,FIELD.y+FIELD.h,Math.PI],[FIELD.x,FIELD.y+FIELD.h,Math.PI*1.5]
-  ].forEach(([cx,cy,sa])=>{
-    ctx.beginPath(); ctx.arc(cx,cy,16,sa,sa+cAng);
-    ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+  // Goal boxes (smaller inner box)
+  const gbW = 48, gbH = 100;
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(FIELD.x, (H-gbH)/2, gbW, gbH);
+  ctx.strokeRect(FIELD.x+FIELD.w-gbW, (H-gbH)/2, gbW, gbH);
+
+  // Goals
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.fillRect(FIELD.x - FIELD.goalW, GOAL_Y, FIELD.goalW, FIELD.goalH);
+  ctx.fillRect(FIELD.x + FIELD.w,     GOAL_Y, FIELD.goalW, FIELD.goalH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 2.5;
+  ctx.strokeRect(FIELD.x - FIELD.goalW, GOAL_Y, FIELD.goalW, FIELD.goalH);
+  ctx.strokeRect(FIELD.x + FIELD.w,     GOAL_Y, FIELD.goalW, FIELD.goalH);
+
+  // Corner arcs
+  [[FIELD.x, FIELD.y, 0], [FIELD.x+FIELD.w, FIELD.y, Math.PI/2],
+   [FIELD.x+FIELD.w, FIELD.y+FIELD.h, Math.PI], [FIELD.x, FIELD.y+FIELD.h, Math.PI*1.5]
+  ].forEach(([cx, cy, sa]) => {
+    ctx.beginPath(); ctx.arc(cx, cy, 18, sa, sa+Math.PI/2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2; ctx.stroke();
   });
 }
 
@@ -384,47 +480,57 @@ function drawField() {
 function drawPlayer(p) {
   const isMe = p.id === myPlayerId;
 
-  ctx.fillStyle='rgba(0,0,0,0.25)';
-  ctx.beginPath(); ctx.ellipse(p.x+3,p.y+p.r+2,p.r*0.8,5,0,0,Math.PI*2); ctx.fill();
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(p.x+4, p.y+p.r+3, p.r*0.75, 6, 0, 0, Math.PI*2); ctx.fill();
 
-  ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-  ctx.fillStyle = isMe ? '#e8c060' : 'rgba(255,255,255,0.9)';
+  // Outer ring
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+  ctx.fillStyle = isMe ? '#e8c060' : 'rgba(255,255,255,0.92)';
   ctx.fill();
 
-  ctx.beginPath(); ctx.arc(p.x,p.y,p.r-3,0,Math.PI*2);
+  // Colour fill
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r-3, 0, Math.PI*2);
   ctx.fillStyle = p.color; ctx.fill();
 
-  ctx.beginPath(); ctx.arc(p.x-p.r*0.2,p.y-p.r*0.2,p.r*0.38,0,Math.PI*2);
-  ctx.fillStyle='rgba(255,255,255,0.2)'; ctx.fill();
+  // Shine
+  ctx.beginPath(); ctx.arc(p.x - p.r*0.22, p.y - p.r*0.22, p.r*0.36, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fill();
 
-  ctx.fillStyle='#fff';
-  ctx.font=`bold ${Math.floor(p.r*0.72)}px Barlow, sans-serif`;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(p.label, p.x, p.y+1);
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.floor(p.r * 0.72)}px Barlow, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(p.label, p.x, p.y + 1);
 
+  // "You" arc above
   if (isMe) {
-    ctx.beginPath(); ctx.arc(p.x,p.y,p.r+5,Math.PI*1.2,Math.PI*1.8);
-    ctx.strokeStyle='#e8c060'; ctx.lineWidth=2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r+6, Math.PI*1.18, Math.PI*1.82);
+    ctx.strokeStyle = '#e8c060'; ctx.lineWidth = 3; ctx.stroke();
   }
 }
 
 // ─── Draw: Ball ───────────────────────────────────────────────────────────────
 function drawBall(b) {
-  ctx.fillStyle='rgba(0,0,0,0.25)';
-  ctx.beginPath(); ctx.ellipse(b.x+3,b.y+b.r-1,b.r*0.8,4,0,0,Math.PI*2); ctx.fill();
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(b.x+4, b.y+b.r-1, b.r*0.75, 5, 0, 0, Math.PI*2); ctx.fill();
 
-  ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
-  const bg=ctx.createRadialGradient(b.x-3,b.y-3,1,b.x,b.y,b.r);
-  bg.addColorStop(0,'#fff'); bg.addColorStop(0.6,'#e8e8e8'); bg.addColorStop(1,'#aaa');
-  ctx.fillStyle=bg; ctx.fill();
+  // Ball
+  ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+  const bg = ctx.createRadialGradient(b.x-3, b.y-3, 1, b.x, b.y, b.r);
+  bg.addColorStop(0, '#fff'); bg.addColorStop(0.6, '#e8e8e8'); bg.addColorStop(1, '#aaa');
+  ctx.fillStyle = bg; ctx.fill();
 
-  const ang=Math.PI*2/5, pr=b.r*0.38;
+  // Pentagon patches
+  const ang = Math.PI*2/5, pr = b.r*0.38;
   ctx.beginPath();
-  for(let i=0;i<5;i++){
-    const a=i*ang-Math.PI/2;
-    i===0?ctx.moveTo(b.x+Math.cos(a)*pr,b.y+Math.sin(a)*pr):ctx.lineTo(b.x+Math.cos(a)*pr,b.y+Math.sin(a)*pr);
+  for (let i = 0; i < 5; i++) {
+    const a = i*ang - Math.PI/2;
+    i === 0 ? ctx.moveTo(b.x+Math.cos(a)*pr, b.y+Math.sin(a)*pr)
+            : ctx.lineTo(b.x+Math.cos(a)*pr, b.y+Math.sin(a)*pr);
   }
   ctx.closePath();
-  ctx.fillStyle='#222'; ctx.strokeStyle='#333'; ctx.lineWidth=1;
+  ctx.fillStyle = '#222'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
   ctx.fill(); ctx.stroke();
 }
