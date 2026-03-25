@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Kickoff — Online</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;600;700&display=swap">
@@ -10,71 +13,78 @@
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════ LOBBY ═══ -->
-<div id="lobby">
+<!-- ══════════════════════════ ROTATE PROMPT (portrait mobile only) ══════════ -->
+<div id="rotate-prompt">
+  <div class="rotate-icon">⟳</div>
+  <p>Rotate your phone to landscape to play</p>
+</div>
 
+<!-- ══════════════════════════════════════════════════════════ LOBBY ═════════ -->
+<div id="lobby">
   <div id="lobby-inner">
     <h1>⚽ Kickoff</h1>
     <p class="subtitle">Online Multiplayer</p>
 
     <div id="nickname-row">
       <label>Your name</label>
-      <input id="nickname" type="text" maxlength="10" placeholder="e.g. Messi" />
+      <input id="nickname" type="text" maxlength="10" placeholder="e.g. Messi" autocomplete="off" />
     </div>
 
     <div id="tabs">
       <button class="tab active" data-tab="create">Create Room</button>
-      <button class="tab" data-tab="join">Join Room</button>
+      <button class="tab"        data-tab="join">Join Room</button>
     </div>
 
     <!-- Create -->
     <div id="tab-create" class="tab-panel">
       <label>Game mode</label>
       <div id="mode-select">
-        <button class="mode-btn active" data-mode="1v1">1 v 1</button>
-        <button class="mode-btn" data-mode="2v1">2 v 1</button>
-        <button class="mode-btn" data-mode="1v2">1 v 2</button>
-        <button class="mode-btn" data-mode="2v2">2 v 2</button>
+        <button class="mode-btn active" data-mode="1v1">
+          <span class="mode-title">1 v 1</span>
+          <span class="mode-sub">2 players</span>
+        </button>
+        <button class="mode-btn" data-mode="2v2">
+          <span class="mode-title">2 v 2</span>
+          <span class="mode-sub">up to 4 players</span>
+        </button>
       </div>
-      <div class="mode-desc" id="mode-desc">1 player each side</div>
+      <p class="mode-desc" id="mode-desc">1 player each side</p>
       <button id="create-btn" class="primary-btn">Create Room</button>
     </div>
 
     <!-- Join -->
     <div id="tab-join" class="tab-panel hidden">
       <label>Room code</label>
-      <input id="room-code-input" type="text" maxlength="4" placeholder="e.g. AB3X" style="text-transform:uppercase;letter-spacing:0.2em;font-size:1.4rem;text-align:center;" />
+      <input id="room-code-input" type="text" maxlength="4" placeholder="AB3X"
+             autocomplete="off" autocorrect="off" autocapitalize="characters"
+             style="text-transform:uppercase;letter-spacing:0.22em;font-size:1.6rem;text-align:center;" />
       <button id="join-btn" class="primary-btn">Join Room</button>
     </div>
 
     <div id="lobby-error"></div>
   </div>
-
 </div>
 
-<!-- ═══════════════════════════════════════════════════════ WAITING ROOM ═══ -->
+<!-- ══════════════════════════════════════════════════ WAITING ROOM ══════════ -->
 <div id="waiting-room" class="hidden">
   <div id="waiting-inner">
-    <h2>Room ready</h2>
+    <h2>Room Ready</h2>
     <div id="room-code-display"></div>
     <p class="waiting-hint">Share this code with friends</p>
-
     <div id="slots-grid"></div>
-
     <div id="waiting-controls">
-      <button id="start-btn" class="primary-btn hidden">Start Game</button>
-      <p id="waiting-msg">Waiting for host to start…</p>
+      <button id="start-btn" class="primary-btn hidden">▶ Start Game</button>
+      <p id="waiting-msg"></p>
     </div>
-
     <div id="countdown-display" class="hidden"></div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════ GAME ═══ -->
+<!-- ══════════════════════════════════════════════════════════ GAME ══════════ -->
 <div id="game-screen" class="hidden">
 
   <div id="scoreboard">
-    <div class="score-block" id="p1-score-block">
+    <div class="score-block" id="left-score-block">
       <div class="label">Left</div>
       <div class="score" id="left-score">0</div>
     </div>
@@ -84,29 +94,42 @@
       <div id="timer-display">02:00</div>
     </div>
     <div class="score-divider">:</div>
-    <div class="score-block" id="p2-score-block">
+    <div class="score-block" id="right-score-block">
       <div class="label">Right</div>
       <div class="score" id="right-score">0</div>
     </div>
   </div>
 
+  <!-- Canvas + overlays -->
   <div id="canvas-wrapper">
     <canvas id="gameCanvas"></canvas>
     <div id="goal-flash"></div>
     <div id="fulltime-overlay">
       <div id="fulltime-title">Full Time</div>
       <div id="fulltime-result"></div>
-      <button onclick="backToLobby()">↺ Back to Lobby</button>
+      <button onclick="backToLobby()">↺ Lobby</button>
     </div>
     <div id="disconnect-overlay" class="hidden">
-      <div>A player disconnected</div>
+      <div id="disconnect-msg">A player disconnected</div>
       <button onclick="backToLobby()">Back to Lobby</button>
     </div>
   </div>
 
+  <!-- Desktop hint (hidden on mobile) -->
   <div id="controls-hint">
-    <div class="hint-block">Move: <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></div>
+    <div class="hint-block">Move: <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> or Arrow keys</div>
     <div id="your-player-hint"></div>
+  </div>
+
+  <!-- Mobile D-pad (shown only on touch devices) -->
+  <div id="dpad" class="hidden">
+    <button class="dpad-btn" id="dpad-up"    data-dir="up">▲</button>
+    <div class="dpad-middle-row">
+      <button class="dpad-btn" id="dpad-left"  data-dir="left">◀</button>
+      <div class="dpad-center"></div>
+      <button class="dpad-btn" id="dpad-right" data-dir="right">▶</button>
+    </div>
+    <button class="dpad-btn" id="dpad-down"  data-dir="down">▼</button>
   </div>
 
 </div>
