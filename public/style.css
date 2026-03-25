@@ -1,4 +1,4 @@
-/* ─── Reset ─────────────────────────────────────────────── */
+/* ─── Reset ─────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -17,6 +17,7 @@ html, body {
   color: #e8d5a3;
   overflow: hidden;
   touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -32,395 +33,465 @@ body::before {
     radial-gradient(ellipse at 20% 50%, rgba(255,220,100,0.05) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 50%, rgba(255,220,100,0.05) 0%, transparent 50%);
   pointer-events: none;
+  z-index: 0;
 }
 
 .hidden { display: none !important; }
 
-/* ─── Rotate prompt ──────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ROTATE PROMPT — shown only when game is active on portrait mobile
+═══════════════════════════════════════════════════════════════════════════════ */
 #rotate-prompt {
-  display: none;
   position: fixed; inset: 0; z-index: 9999;
   background: var(--bg);
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 12px;
   text-align: center;
   padding: 2rem;
 }
 
-.rotate-icon {
+.rotate-phone {
   font-size: 4rem;
-  animation: spin 2s ease-in-out infinite;
+  display: block;
+  animation: tiltphone 1.4s ease-in-out infinite;
+  transform-origin: center;
 }
 
-@keyframes spin {
+.rotate-arrow {
+  font-size: 2.5rem;
+  color: var(--gold);
+  animation: spinArrow 1.4s ease-in-out infinite;
+}
+
+@keyframes tiltphone {
   0%,100% { transform: rotate(0deg); }
   50%      { transform: rotate(90deg); }
+}
+@keyframes spinArrow {
+  0%,100% { opacity: 0.3; transform: scale(0.8); }
+  50%      { opacity: 1;   transform: scale(1.1); }
 }
 
 #rotate-prompt p {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   letter-spacing: 0.1em;
   color: #aaa;
+  margin-top: 4px;
 }
 
-/* Show rotate prompt on portrait mobile */
-@media (max-width: 768px) and (orientation: portrait) {
-  #rotate-prompt { display: flex; }
-  #lobby, #waiting-room, #game-screen { display: none !important; }
-}
-
-/* ─── Shared full-screen panels ─────────────────────────── */
-#lobby, #waiting-room, #game-screen {
+/* ═══════════════════════════════════════════════════════════════════════════════
+   LOBBY & WAITING — normal layout, works in portrait too
+═══════════════════════════════════════════════════════════════════════════════ */
+#lobby, #waiting-room {
   width: 100%; height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
 }
 
-/* ─── Lobby ─────────────────────────────────────────────── */
+/* ── Lobby card ──────────────────────────────────────────────────────────────── */
 #lobby-inner {
   background: var(--card);
   border: 1.5px solid var(--border);
-  border-radius: 14px;
-  padding: 2rem 2.4rem;
-  width: min(420px, 92vw);
-  box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+  border-radius: 18px;
+  padding: 28px 28px 22px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 10px 50px rgba(0,0,0,0.7);
 }
 
 h1 {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(1.8rem, 5vw, 2.6rem);
+  font-size: clamp(2.2rem, 8vw, 3rem);
   letter-spacing: 0.14em;
   text-align: center;
   color: #e8d5a3;
+  line-height: 1;
   margin-bottom: 2px;
 }
 
 .subtitle {
   text-align: center; color: #555;
-  font-size: 0.72rem; letter-spacing: 0.14em;
-  text-transform: uppercase; margin-bottom: 1.4rem;
+  font-size: 0.75rem; letter-spacing: 0.16em;
+  text-transform: uppercase; margin-bottom: 22px;
 }
 
 label {
   display: block;
-  font-size: 0.66rem; font-weight: 700;
+  font-size: 0.72rem; font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase;
-  color: #666; margin-bottom: 6px;
+  color: #666; margin-bottom: 8px;
 }
 
 input[type="text"] {
   width: 100%;
-  background: #1a1a1a; border: 1.5px solid #2a2a2a;
-  border-radius: 7px; color: #e8d5a3;
-  font-family: 'Barlow', sans-serif; font-size: 1rem;
-  padding: 10px 14px; outline: none; transition: border-color 0.2s;
+  background: #1c1c1c; border: 1.5px solid #2e2e2e;
+  border-radius: 10px; color: #e8d5a3;
+  font-family: 'Barlow', sans-serif; font-size: 1.1rem;
+  padding: 14px 16px; outline: none; transition: border-color 0.2s;
   -webkit-appearance: none;
 }
-input[type="text"]:focus { border-color: #6a5a30; }
+input[type="text"]:focus { border-color: var(--gold); }
+input[type="text"]::placeholder { color: #3a3a3a; }
 
-#nickname-row { margin-bottom: 1.2rem; }
+#room-code-input {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 2rem;
+  text-align: center;
+  font-family: 'Bebas Neue', sans-serif;
+}
+
+#nickname-row { margin-bottom: 18px; }
 
 /* Tabs */
 #tabs {
-  display: flex; margin-bottom: 1.2rem;
+  display: flex; margin-bottom: 18px;
   border-bottom: 1.5px solid #222;
 }
 .tab {
   background: none; border: none;
-  border-bottom: 2.5px solid transparent; margin-bottom: -1.5px;
-  color: #444; font-family: 'Barlow', sans-serif;
-  font-size: 0.8rem; font-weight: 700;
+  border-bottom: 3px solid transparent; margin-bottom: -1.5px;
+  color: #3a3a3a; font-family: 'Barlow', sans-serif;
+  font-size: 0.85rem; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase;
-  padding: 8px 18px; cursor: pointer; transition: all 0.2s;
+  padding: 10px 20px; cursor: pointer; transition: all 0.2s;
 }
-.tab:hover  { color: #999; }
-.tab.active { color: #e8d5a3; border-bottom-color: #e8d5a3; }
+.tab:active  { color: #888; }
+.tab.active  { color: #e8d5a3; border-bottom-color: var(--gold); }
 
-.tab-panel { display: flex; flex-direction: column; gap: 12px; }
+.tab-panel { display: flex; flex-direction: column; gap: 14px; }
 
 /* Mode buttons */
-#mode-select { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#mode-select { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .mode-btn {
-  background: #1a1a1a; border: 1.5px solid #2a2a2a;
-  border-radius: 8px; color: #666; padding: 14px 8px;
+  background: #181818; border: 1.5px solid #2a2a2a;
+  border-radius: 12px; color: #555; padding: 18px 8px 14px;
   cursor: pointer; transition: all 0.18s;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  -webkit-tap-highlight-color: transparent;
 }
-.mode-btn:hover { border-color: #555; color: #bbb; }
-.mode-btn.active { border-color: var(--gold); background: #1e180a; color: var(--gold); }
+.mode-btn:active { transform: scale(0.96); }
+.mode-btn.active { border-color: var(--gold); background: #1c1608; color: var(--gold); }
 
-.mode-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.08em; line-height: 1; }
-.mode-sub   { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
+.mode-icon  { font-size: 1.4rem; line-height: 1; }
+.mode-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; letter-spacing: 0.08em; line-height: 1; }
+.mode-sub   { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.6; }
 
-.mode-desc { font-size: 0.7rem; color: #555; text-align: center; letter-spacing: 0.06em; min-height: 16px; }
+.mode-desc {
+  font-size: 0.75rem; color: #555; text-align: center;
+  letter-spacing: 0.06em; min-height: 18px;
+}
 
 /* Primary btn */
 .primary-btn {
-  background: #2a2010; border: 1.5px solid var(--border);
-  border-radius: 7px; color: #e8d5a3;
-  font-family: 'Barlow', sans-serif; font-size: 0.88rem;
-  font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
-  padding: 12px; cursor: pointer; transition: all 0.2s; width: 100%;
+  background: #251d0a; border: 1.5px solid var(--border);
+  border-radius: 10px; color: #e8d5a3;
+  font-family: 'Barlow', sans-serif; font-size: 1rem;
+  font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 16px; cursor: pointer; transition: all 0.18s; width: 100%;
   -webkit-appearance: none;
 }
-.primary-btn:hover   { background: #4a3820; }
-.primary-btn:active  { background: #5a4828; transform: scale(0.98); }
+.primary-btn:active  { background: #4a3820; transform: scale(0.98); }
 
 #lobby-error {
-  min-height: 16px; font-size: 0.72rem;
-  color: #e05050; text-align: center; margin-top: 4px;
+  min-height: 18px; font-size: 0.8rem;
+  color: #e05050; text-align: center; margin-top: 6px;
+  font-weight: 600;
 }
 
-/* ─── Waiting Room ───────────────────────────────────────── */
+/* ── Waiting room card ───────────────────────────────────────────────────────── */
 #waiting-inner {
   background: var(--card);
   border: 1.5px solid var(--border);
-  border-radius: 14px;
-  padding: 1.8rem 2.2rem;
-  width: min(500px, 94vw);
+  border-radius: 18px;
+  padding: 24px 24px 20px;
+  width: 100%;
+  max-width: 480px;
   text-align: center;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+  box-shadow: 0 10px 50px rgba(0,0,0,0.7);
 }
 
 #waiting-inner h2 {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(1.4rem, 4vw, 1.8rem);
-  letter-spacing: 0.1em; margin-bottom: 10px;
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  letter-spacing: 0.1em; margin-bottom: 14px;
+}
+
+/* Code + copy button */
+#code-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
 #room-code-display {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(2.4rem, 8vw, 3.8rem);
-  letter-spacing: 0.3em; color: var(--gold);
-  background: #1a1a1a; border: 1.5px solid var(--border);
-  border-radius: 8px; padding: 8px 20px;
-  display: inline-block; margin-bottom: 4px;
+  font-size: clamp(2.8rem, 10vw, 4.2rem);
+  letter-spacing: 0.35em; color: var(--gold);
+  background: #181818; border: 1.5px solid var(--border);
+  border-radius: 12px; padding: 10px 24px 6px;
+  line-height: 1;
 }
+
+#copy-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: #1c1c1c; border: 1.5px solid #333;
+  border-radius: 8px; color: #aaa;
+  font-family: 'Barlow', sans-serif; font-size: 0.82rem;
+  font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 10px 22px; cursor: pointer; transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+#copy-btn:active { background: #2a2a2a; color: var(--gold); }
+#copy-btn.copied { border-color: #4a8a4a; color: #7ac87a; }
 
 .waiting-hint {
-  font-size: 0.68rem; color: #444;
-  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1.4rem;
+  font-size: 0.7rem; color: #3a3a3a;
+  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 18px;
 }
 
+/* Slots */
 #slots-grid {
   display: grid; grid-template-columns: 1fr auto 1fr;
-  gap: 8px; align-items: start; margin-bottom: 1.4rem;
+  gap: 10px; align-items: start; margin-bottom: 18px;
 }
 
-.slots-team { display: flex; flex-direction: column; gap: 6px; }
+.slots-team { display: flex; flex-direction: column; gap: 8px; }
 
 .slots-team-label {
-  font-size: 0.6rem; font-weight: 700;
-  letter-spacing: 0.12em; text-transform: uppercase; color: #444; margin-bottom: 2px;
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: #3a3a3a; margin-bottom: 2px;
 }
 
 .slot-card {
-  background: #1a1a1a; border: 1.5px solid #222;
-  border-radius: 8px; padding: 9px 12px;
-  font-size: 0.82rem; font-weight: 600; color: #333;
-  display: flex; align-items: center; gap: 8px;
+  background: #181818; border: 1.5px solid #222;
+  border-radius: 10px; padding: 12px 14px;
+  font-size: 0.9rem; font-weight: 600; color: #2e2e2e;
+  display: flex; align-items: center; gap: 10px;
   transition: border-color 0.2s;
+  text-align: left;
 }
 .slot-card.filled     { border-color: #3a3020; color: #e8d5a3; }
-.slot-card.filled.you { border-color: var(--gold); background: #1e180a; }
+.slot-card.filled.you { border-color: var(--gold); background: #1a1308; }
 
-.slot-dot { width: 10px; height: 10px; border-radius: 50%; background: #2a2a2a; flex-shrink: 0; }
+.slot-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%; background: #2a2a2a; flex-shrink: 0;
+}
 .slot-card.filled .slot-dot { background: var(--dot-color, #888); }
 
 .vs-divider {
-  font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem;
-  color: #2a2a2a; display: flex; align-items: center;
-  justify-content: center; padding-top: 24px;
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem;
+  color: #222; display: flex; align-items: center;
+  justify-content: center; padding-top: 28px;
 }
 
-#waiting-msg { font-size: 0.72rem; color: #444; letter-spacing: 0.08em; margin-top: 6px; }
+#waiting-msg { font-size: 0.75rem; color: #3a3a3a; letter-spacing: 0.08em; margin-top: 8px; }
 
 #countdown-display {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(3rem, 12vw, 5rem);
+  font-size: clamp(4rem, 15vw, 6rem);
   color: var(--gold); letter-spacing: 0.1em;
   animation: cdpulse 0.5s ease-out;
 }
 @keyframes cdpulse {
-  0%   { transform: scale(1.5); opacity: 0.3; }
-  100% { transform: scale(1);   opacity: 1; }
+  0%   { transform: scale(1.6); opacity: 0.2; }
+  100% { transform: scale(1);   opacity: 1;   }
 }
 
-/* ─── Game screen ────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   GAME SCREEN — full screen canvas
+═══════════════════════════════════════════════════════════════════════════════ */
 #game-screen {
-  flex-direction: column;
+  width: 100%; height: 100%;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 0;
-  gap: 0;
+  background: #000;
 }
 
-/* Scoreboard */
-#scoreboard {
-  display: flex; align-items: center;
-  background: #111; border: 2px solid var(--border);
-  border-radius: 6px; overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
-  flex-shrink: 0;
-  margin-bottom: 4px;
-}
-
-.score-block { padding: 4px 16px; text-align: center; }
-.score-block .label {
-  font-size: 0.55rem; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase; color: #666; margin-bottom: 1px;
-}
-.score-block .score {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(1.4rem, 4vw, 2.2rem); line-height: 1; color: #f0e8d0;
-}
-
-#left-score-block  { border-right: 1px solid #222; }
-#left-score-block  .label { color: var(--orange); }
-#right-score-block { border-left: 1px solid #222; }
-#right-score-block .label { color: var(--blue); }
-
-.score-divider {
-  padding: 4px 10px;
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 1.2rem; color: #333;
-}
-
-#timer-block { padding: 4px 16px; text-align: center; border-left: 1px solid #222; border-right: 1px solid #222; }
-#timer-block .label { font-size: 0.55rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #666; margin-bottom: 1px; }
-#timer-display {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(1.4rem, 4vw, 2.2rem); line-height: 1; color: #f0e8d0; transition: color 0.3s;
-}
-#timer-display.urgent { color: #e05050; }
-
-/* Canvas wrapper — scales to fill available space */
+/* Canvas wrapper fills all available space */
 #canvas-wrapper {
   position: relative;
-  flex-shrink: 0;
-  border-radius: 3px; overflow: hidden;
-  box-shadow: 0 0 0 2px var(--border), 0 0 0 4px #222, 0 6px 30px rgba(0,0,0,0.8);
+  background: #000;
+  overflow: hidden;
+  /* size set by JS */
 }
 
 canvas { display: block; }
 
-/* Goal flash */
+/* ── Floating scoreboard — overlaid on top of canvas ─────────────────────────── */
+#scoreboard {
+  position: absolute;
+  top: 8px; left: 50%; transform: translateX(-50%);
+  z-index: 10;
+  display: flex; align-items: center;
+  background: rgba(10,10,10,0.85);
+  border: 1.5px solid var(--border);
+  border-radius: 50px;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.7);
+  white-space: nowrap;
+}
+
+.score-block { padding: 6px 18px; text-align: center; }
+.s-label {
+  font-size: 0.55rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: #555; margin-bottom: 1px;
+}
+.s-score {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(1.4rem, 4vw, 2rem);
+  line-height: 1; color: #f0e8d0;
+}
+
+#left-score-block  { border-right: 1px solid #222; }
+#left-score-block  .s-label { color: var(--orange); }
+#right-score-block { border-left: 1px solid #222;  }
+#right-score-block .s-label { color: var(--blue);   }
+
+.s-divider {
+  padding: 0 10px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1rem; color: #2a2a2a;
+}
+
+#timer-block {
+  padding: 6px 16px; text-align: center;
+  border-left: 1px solid #222; border-right: 1px solid #222;
+}
+#timer-display {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(1.4rem, 4vw, 2rem);
+  line-height: 1; color: #f0e8d0; transition: color 0.3s;
+}
+#timer-display.urgent { color: #e05050; animation: blink 0.6s ease-in-out infinite alternate; }
+@keyframes blink { from { opacity: 1; } to { opacity: 0.5; } }
+
+/* ── Goal flash ──────────────────────────────────────────────────────────────── */
 #goal-flash {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; z-index: 20;
   display: flex; align-items: center; justify-content: center;
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(2rem, 6vw, 5rem); letter-spacing: 0.1em;
-  text-shadow: 0 0 24px rgba(255,200,50,0.9), 0 2px 6px rgba(0,0,0,0.9);
+  font-size: clamp(2.5rem, 8vw, 6rem); letter-spacing: 0.1em;
+  text-shadow: 0 0 30px rgba(255,200,50,0.9), 0 2px 8px rgba(0,0,0,0.9);
   pointer-events: none; opacity: 0; transition: opacity 0.15s;
 }
 
-/* Fulltime overlay */
+/* ── Fulltime overlay ────────────────────────────────────────────────────────── */
 #fulltime-overlay {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; z-index: 30;
   display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 6px;
-  background: rgba(0,0,0,0.75);
+  align-items: center; justify-content: center; gap: 8px;
+  background: rgba(0,0,0,0.80);
   opacity: 0; pointer-events: none; transition: opacity 0.4s;
 }
 #fulltime-overlay.show { opacity: 1; pointer-events: all; }
 #fulltime-title {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(2rem, 6vw, 3.5rem); letter-spacing: 0.12em;
-  color: #e8d5a3; text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+  font-size: clamp(2.5rem, 8vw, 4rem); letter-spacing: 0.12em;
+  color: #e8d5a3;
 }
 #fulltime-result {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(1rem, 3vw, 1.6rem); letter-spacing: 0.08em; color: #aaa;
+  font-size: clamp(1.2rem, 4vw, 2rem); letter-spacing: 0.08em; color: #aaa;
 }
 #fulltime-overlay button, #disconnect-overlay button {
-  margin-top: 10px;
+  margin-top: 14px;
   background: #3a3020; border: 1.5px solid #6a5a30;
   color: #e8d5a3; font-family: 'Barlow', sans-serif;
-  font-size: 0.82rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; padding: 9px 26px;
-  border-radius: 4px; cursor: pointer; transition: background 0.2s;
+  font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 12px 30px;
+  border-radius: 8px; cursor: pointer; transition: background 0.2s;
+  -webkit-tap-highlight-color: transparent;
 }
-#fulltime-overlay button:hover, #disconnect-overlay button:hover { background: #5a4a28; }
+#fulltime-overlay button:active, #disconnect-overlay button:active { background: #5a4a28; }
 
-/* Disconnect overlay */
+/* ── Disconnect overlay ──────────────────────────────────────────────────────── */
 #disconnect-overlay {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; gap: 12px;
+  position: absolute; inset: 0; z-index: 30;
+  display: flex; flex-direction: column; gap: 14px;
   align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.82);
+  background: rgba(0,0,0,0.85);
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(1.2rem, 4vw, 2rem); letter-spacing: 0.08em; color: #e8d5a3;
+  font-size: clamp(1.4rem, 5vw, 2.2rem); letter-spacing: 0.08em; color: #e8d5a3;
 }
 
-/* Desktop keyboard hint */
+/* ── Desktop controls hint — floating bottom-right ───────────────────────────── */
 #controls-hint {
-  margin-top: 6px;
-  display: flex; gap: 24px;
-  color: #444; font-size: 0.68rem; font-weight: 600;
+  position: absolute; bottom: 10px; right: 12px; z-index: 10;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  color: rgba(255,255,255,0.3); font-size: 0.65rem; font-weight: 600;
   letter-spacing: 0.06em; text-transform: uppercase;
-  flex-shrink: 0;
+  pointer-events: none;
 }
-.hint-block { display: flex; align-items: center; gap: 4px; }
-.key {
-  display: inline-block; background: #222; border: 1px solid #444;
-  border-bottom: 2px solid #333; border-radius: 3px;
-  padding: 1px 4px; font-size: 0.62rem; color: #888; font-family: monospace;
-}
-#your-player-hint { color: var(--gold); }
+#your-player-hint { color: var(--gold); opacity: 0.7; }
 
-/* Hide desktop hint on mobile */
-@media (max-width: 900px) and (orientation: landscape) {
-  #controls-hint { display: none; }
-}
+/* Hide desktop hint on touch devices */
+@media (pointer: coarse) { #controls-hint { display: none; } }
 
-/* ─── D-pad (mobile only) ────────────────────────────────── */
-#dpad {
+/* ═══════════════════════════════════════════════════════════════════════════════
+   JOYSTICK — floating bottom-left over canvas, mobile only
+═══════════════════════════════════════════════════════════════════════════════ */
+#joystick-zone {
+  position: absolute;
+  bottom: 20px; left: 20px; z-index: 15;
+  width: 140px; height: 140px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
-  margin-top: 6px;
-  flex-shrink: 0;
+  justify-content: center;
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.dpad-middle-row {
-  display: flex; align-items: center; gap: 2px;
+#joystick-base {
+  width: 130px; height: 130px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  border: 2px solid rgba(255,255,255,0.12);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.dpad-btn {
-  width: 52px; height: 52px;
-  background: rgba(255,255,255,0.08);
-  border: 1.5px solid rgba(255,255,255,0.15);
-  border-radius: 10px;
-  color: rgba(255,255,255,0.7);
-  font-size: 1.1rem;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.1s;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: none;
+/* Inner ring guide */
+#joystick-base::before {
+  content: '';
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.08);
+  position: absolute;
 }
 
-.dpad-btn.pressed {
-  background: rgba(255,255,255,0.22);
-  border-color: rgba(255,255,255,0.4);
-  color: #fff;
+#joystick-knob {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.35), rgba(255,255,255,0.1));
+  border: 2px solid rgba(255,255,255,0.25);
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  transition: transform 0.05s;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  pointer-events: none;
 }
 
-.dpad-center { width: 52px; height: 52px; }
-
-/* Show D-pad only on touch landscape */
-@media (pointer: coarse) and (orientation: landscape) {
-  #dpad { display: flex; }
-  #controls-hint { display: none; }
+/* Show joystick only on touch devices */
+@media (pointer: fine) {
+  #joystick-zone { display: none !important; }
 }
-
-/* ─── Responsive canvas scaling ─────────────────────────── */
-/* Handled via JS — canvas-wrapper gets width/height set dynamically */
 
