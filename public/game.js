@@ -160,24 +160,43 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => { keys[e.key] = false; });
 
 // ─── Joystick ─────────────────────────────────────────────────────────────────
-const JOY_RADIUS   = 65;   // base radius (px on screen — scaled)
-const DEAD_ZONE    = 0.15; // fraction of radius before direction registers
+// Floating-origin design: the base snaps to wherever the thumb lands,
+// not a fixed centre point. This feels far more natural on mobile.
+// JOY_RADIUS is in *screen* px — scales with whatever size the canvas is rendered at.
+const JOY_RADIUS = 55;   // max thumb travel in screen px
+
+// Reposition the visible base to where the touch started
+function placeJoyBase(screenX, screenY) {
+  const zr   = joystickZone.getBoundingClientRect();
+  // clamp inside the zone
+  const lx   = Math.max(JOY_RADIUS, Math.min(screenX - zr.left, zr.width  - JOY_RADIUS));
+  const ly   = Math.max(JOY_RADIUS, Math.min(screenY - zr.top,  zr.height - JOY_RADIUS));
+  const base = document.getElementById('joystick-base');
+  base.style.position = 'absolute';
+  base.style.left     = (lx - base.offsetWidth  / 2) + 'px';
+  base.style.top      = (ly - base.offsetHeight / 2) + 'px';
+}
 
 joystickZone.addEventListener('touchstart', e => {
   e.preventDefault();
-  const t  = e.changedTouches[0];
-  const rc = joystickZone.getBoundingClientRect();
+  // Only track first touch that lands in the zone
+  if (joy.active) return;
+  const t = e.changedTouches[0];
   joy.active  = true;
   joy.touchId = t.identifier;
-  joy.cx      = rc.left + rc.width  / 2;
-  joy.cy      = rc.top  + rc.height / 2;
+  joy.cx      = t.clientX;   // origin = where thumb landed
+  joy.cy      = t.clientY;
+  placeJoyBase(t.clientX, t.clientY);
   updateJoy(t.clientX, t.clientY);
 }, { passive: false });
 
 joystickZone.addEventListener('touchmove', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
-    if (t.identifier === joy.touchId) { updateJoy(t.clientX, t.clientY); break; }
+    if (t.identifier === joy.touchId) {
+      updateJoy(t.clientX, t.clientY);
+      break;
+    }
   }
 }, { passive: false });
 
@@ -190,48 +209,65 @@ joystickZone.addEventListener('touchmove', e => {
   }, { passive: false });
 });
 
-function updateJoy(cx, cy) {
-  let dx = cx - joy.cx;
-  let dy = cy - joy.cy;
-  const dist = Math.sqrt(dx*dx + dy*dy);
-  const maxR = JOY_RADIUS;
-  if (dist > maxR) { dx = dx/dist*maxR; dy = dy/dist*maxR; }
-  joy.dx = dx / maxR;
-  joy.dy = dy / maxR;
-  // Move knob visually
+function updateJoy(tx, ty) {
+  let dx   = tx - joy.cx;
+  let dy   = ty - joy.cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  // Clamp knob travel to JOY_RADIUS
+  if (dist > JOY_RADIUS) {
+    dx = (dx / dist) * JOY_RADIUS;
+    dy = (dy / dist) * JOY_RADIUS;
+  }
+
+  // Normalise to −1..1 (preserving magnitude for variable speed)
+  joy.dx = dx / JOY_RADIUS;
+  joy.dy = dy / JOY_RADIUS;
+
+  // Move the knob visually relative to the base centre
   joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 }
 
 function resetJoy() {
   joy.active = false;
-  joy.dx = 0; joy.dy = 0;
+  joy.dx = 0;
+  joy.dy = 0;
   joystickKnob.style.transform = 'translate(-50%, -50%)';
+  // Reset base to default bottom-left position
+  const base = document.getElementById('joystick-base');
+  base.style.position = '';
+  base.style.left     = '';
+  base.style.top      = '';
 }
 
-function getActiveKeys() {
-  const kUp    = keys['w'] || keys['ArrowUp'];
-  const kDown  = keys['s'] || keys['ArrowDown'];
-  const kLeft  = keys['a'] || keys['ArrowLeft'];
-  const kRight = keys['d'] || keys['ArrowRight'];
+// ─── Build analog input vector ────────────────────────────────────────────────
+// Joystick:  joy.dx / joy.dy are already −1..1 proportional to push distance
+// Keyboard:  compose a unit vector from held keys, normalize diagonal
+function getInputVector() {
+  // Joystick takes priority if active
+  if (joy.active && (Math.abs(joy.dx) > 0.05 || Math.abs(joy.dy) > 0.05)) {
+    return { ax: joy.dx, ay: joy.dy };
+  }
 
-  const jUp    = joy.dy < -DEAD_ZONE;
-  const jDown  = joy.dy >  DEAD_ZONE;
-  const jLeft  = joy.dx < -DEAD_ZONE;
-  const jRight = joy.dx >  DEAD_ZONE;
+  // Keyboard — build raw vector
+  let ax = 0, ay = 0;
+  if (keys['a'] || keys['ArrowLeft'])  ax -= 1;
+  if (keys['d'] || keys['ArrowRight']) ax += 1;
+  if (keys['w'] || keys['ArrowUp'])    ay -= 1;
+  if (keys['s'] || keys['ArrowDown'])  ay += 1;
 
-  return {
-    up:    !!(kUp    || jUp),
-    down:  !!(kDown  || jDown),
-    left:  !!(kLeft  || jLeft),
-    right: !!(kRight || jRight),
-  };
+  // Normalize diagonal so moving at 45° isn't faster than straight
+  const len = Math.sqrt(ax*ax + ay*ay);
+  if (len > 0) { ax /= len; ay /= len; }
+
+  return { ax, ay };
 }
 
 function startInputLoop() {
   if (inputLoop) return;
   inputLoop = setInterval(() => {
     if (!myCode || !myPlayerId) return;
-    socket.emit('input', { code: myCode, keys: getActiveKeys() });
+    socket.emit('input', { code: myCode, input: getInputVector() });
   }, 1000 / 60);
 }
 
